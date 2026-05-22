@@ -1,0 +1,7 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pip install -r requirements.txt"
+
+[deploy]
+startCommand = "python bot.py"
+restartPolicyMaxRetries = 10
