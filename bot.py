@@ -1,24 +1,20 @@
-import os
 import discord
+import os
+import asyncio
 from discord import app_commands
-from dotenv import load_dotenv
-from openai import OpenAI
-import logging
-from collections import defaultdict
+from xai_sdk import Client
+from xai_sdk.chat import system, user
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-load_dotenv()
-
+# Load environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-# Debug key loading
-logger.info(f"DISCORD_TOKEN loaded: {'Yes' if DISCORD_TOKEN else 'No'}")
-logger.info(f"XAI_API_KEY loaded: {'Yes' if XAI_API_KEY else 'No'}")
-if XAI_API_KEY:
-    logger.info(f"XAI key preview: {XAI_API_KEY[:15]}...")
+if not DISCORD_TOKEN or not XAI_API_KEY:
+    print("❌ Missing DISCORD_TOKEN or XAI_API_KEY!")
+    exit(1)
+
+# Initialize Grok client
+xai_client = Client(api_key=XAI_API_KEY)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -26,65 +22,40 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-grok = OpenAI(
-    api_key=XAI_API_KEY,
-    base_url="https://api.x.ai/v1",
-)
-
-# Simple conversation memory (per channel)
-conversation_history = defaultdict(list)
-
 @client.event
 async def on_ready():
     await tree.sync()
-    logger.info(f"✅ Bot is online as {client.user}")
-    logger.info(f"✅ Connected to {len(client.guilds)} server(s)")
+    print(f"✅ Bot is online as {client.user} on {len(client.guilds)} server(s)")
 
-@tree.command(name="ask", description="Ask Grok anything (remembers conversation in thread)")
-async def ask(interaction: discord.Interaction, prompt: str):
+# Slash Command: /ask
+@tree.command(name="ask", description="Ask Grok anything")
+@app_commands.describe(question="Your question for Grok")
+async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer()
-    
-    channel_id = str(interaction.channel_id)
-    
+
     try:
-        # Add user message to history
-        conversation_history[channel_id].append({"role": "user", "content": prompt})
-        
-        # Keep only last 10 messages
-        if len(conversation_history[channel_id]) > 20:
-            conversation_history[channel_id] = conversation_history[channel_id][-20:]
+        chat = xai_client.chat.create(model="grok-4")  # or "grok-3" / "grok-2"
+        chat.append(system("You are a helpful, witty, and truthful assistant."))
+        chat.append(user(question))
 
-        logger.info(f"📨 Query from {interaction.user} in channel {channel_id}")
+        response = await chat.sample()
+        
+        # Split long responses if needed
+        if len(response.text) > 1900:
+            await interaction.followup.send(response.text[:1900])
+            await interaction.followup.send(response.text[1900:])
+        else:
+            await interaction.followup.send(response.text)
 
-        response = grok.chat.completions.create(
-            model="grok-4.3",
-            messages=[
-                {"role": "system", "content": "You are Grok, a helpful and maximally truthful AI built by xAI."}
-            ] + conversation_history[channel_id],
-            temperature=0.85,
-            max_tokens=1500,
-        )
-        
-        reply = response.choices[0].message.content
-        
-        # Add assistant reply to history
-        conversation_history[channel_id].append({"role": "assistant", "content": reply})
-        
-        await interaction.followup.send(reply[:2000])
-        logger.info("✅ Response sent successfully")
-        
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
-@tree.command(name="clear", description="Clear conversation history for this channel")
-async def clear(interaction: discord.Interaction):
-    channel_id = str(interaction.channel_id)
-    conversation_history[channel_id] = []
-    await interaction.response.send_message("🧹 Conversation history cleared for this channel.", ephemeral=True)
+# Optional: Respond when mentioned
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+    if client.user.mentioned_in(message):
+        await message.channel.send("Hey! Use `/ask` to talk to me 😊")
 
-if __name__ == "__main__":
-    if DISCORD_TOKEN:
-        client.run(DISCORD_TOKEN)
-    else:
-        logger.error("❌ DISCORD_TOKEN is missing! Cannot start bot.")
+client.run(DISCORD_TOKEN)
