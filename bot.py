@@ -1,6 +1,8 @@
 import discord
 import os
 import time
+import asyncio
+import json
 from discord import app_commands
 from xai_sdk import Client
 from xai_sdk.chat import system, user, assistant
@@ -9,6 +11,10 @@ from xai_sdk.chat import system, user, assistant
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", 0))
+
+MAX_HISTORY = 12
+COOLDOWN_SECONDS = 5
+MEMORY_TIMEOUT = 3600
 
 if not DISCORD_TOKEN or not XAI_API_KEY:
     print("❌ Missing DISCORD_TOKEN or XAI_API_KEY!")
@@ -38,7 +44,7 @@ async def on_ready():
     print(f"✅ {client.user} is online on {len(client.guilds)} servers!")
 
 
-# ===================== IMAGINE (NSFW) =====================
+# ===================== NSFW IMAGINE =====================
 @tree.command(name="imagine", description="Generate images (NSFW allowed)")
 @app_commands.describe(prompt="Describe the image")
 async def imagine(interaction: discord.Interaction, prompt: str):
@@ -53,15 +59,17 @@ async def imagine(interaction: discord.Interaction, prompt: str):
         await interaction.followup.send(f"Error: {str(e)}")
 
 
-# ===================== BASIC COMMANDS =====================
+# ===================== OTHER COMMANDS =====================
 @tree.command(name="ask", description="Chat with Grok")
 @app_commands.describe(question="Your question")
 async def ask(interaction: discord.Interaction, question: str):
-    await interaction.response.send_message("Chat feature is ready!")
+    await interaction.response.send_message("Chat is ready!")
 
 @tree.command(name="help", description="Show commands")
 async def help_command(interaction: discord.Interaction):
-    await interaction.response.send_message("Use `/ask` and `/imagine`")
+    embed = discord.Embed(title="Grok Bot", description="Powered by xAI", color=0x1DA1F2)
+    embed.add_field(name="Commands", value="/ask\n/imagine\n/help", inline=False)
+    await interaction.response.send_message(embed=embed)
 
 
 # ===================== OWNER COMMANDS =====================
