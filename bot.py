@@ -1,7 +1,3 @@
-# =============================================
-# GROK DISCORD BOT - grok-4.3 + MODEL FIXES
-# =============================================
-
 import discord
 import os
 import time
@@ -21,8 +17,6 @@ if not DISCORD_TOKEN or not XAI_API_KEY:
     exit(1)
 
 print("✅ Tokens loaded successfully!")
-print(f"   Discord token starts with: {DISCORD_TOKEN[:4]}... ends with: ...{DISCORD_TOKEN[-4:]}")
-print(f"   XAI key starts with: {XAI_API_KEY[:6]}")
 
 xai_client = Client(api_key=XAI_API_KEY)
 
@@ -31,7 +25,7 @@ MEMORY_FILE = "conversation_memory.json"
 conversation_memory = {}
 user_cooldowns = {}
 MAX_HISTORY = 12
-COOLDOWN_SECONDS = 2          # Lowered for easier testing
+COOLDOWN_SECONDS = 2          # Easy testing mode
 START_TIME = time.time()
 
 def load_memory():
@@ -58,7 +52,6 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# ==================== EVENTS ====================
 @client.event
 async def on_ready():
     await tree.sync()
@@ -90,7 +83,7 @@ async def ask(interaction: discord.Interaction, question: str):
         conversation_memory[user_id] = []
 
     try:
-        chat = xai_client.chat.create(model="grok-4.3")   # ← Updated to grok-4.3
+        chat = xai_client.chat.create(model="grok-4.3")   # Stable + your new key
         chat.append(system("You are Grok, helpful, witty, and a little chaotic. Remember previous messages."))
 
         for msg in conversation_memory[user_id][-MAX_HISTORY:]:
@@ -125,7 +118,12 @@ async def imagine(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     try:
         await interaction.followup.send("🎨 Generating...")
-        response = xai_client.image.sample(prompt=prompt, model="grok-imagine-image-quality")
+
+        response = xai_client.image.sample(
+            prompt=prompt,
+            model="grok-imagine-image-quality"   # Current recommended image model
+        )
+
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=response.images[0].url)
         await interaction.followup.send(embed=embed)
