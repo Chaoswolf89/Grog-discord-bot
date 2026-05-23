@@ -6,6 +6,7 @@ buildCommand = "pip install -r requirements.txt"
 startCommand = "python bot.py"
 restartPolicyMaxRetries = 10
 
+# Health Check (Recommended for Discord bots)
 [healthcheck]
 path = "/"
 interval = 30
