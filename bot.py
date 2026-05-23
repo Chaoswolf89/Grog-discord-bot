@@ -1,3 +1,7 @@
+# =============================================
+# GROK DISCORD BOT - CLEAN + EXPLICIT VERSION
+# =============================================
+
 import discord
 import os
 import time
@@ -22,7 +26,7 @@ print(f"   XAI key starts with: {XAI_API_KEY[:6]}")
 
 xai_client = Client(api_key=XAI_API_KEY)
 
-# ==================== MEMORY & COOLDOWNS ====================
+# ==================== MEMORY ====================
 MEMORY_FILE = "conversation_memory.json"
 conversation_memory = {}
 user_cooldowns = {}
@@ -69,6 +73,7 @@ async def on_message(message):
         await message.channel.send(random.choice(replies))
 
 # ==================== COMMANDS ====================
+
 @tree.command(name="ask", description="Chat with Grok (with memory)")
 @app_commands.describe(question="What do you want to ask?")
 async def ask(interaction: discord.Interaction, question: str):
@@ -135,7 +140,7 @@ async def imagine(interaction: discord.Interaction, prompt: str):
 @tree.command(name="help", description="Show all commands")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(title="Grok Bot Commands", color=0x00FFAA)
-    embed.add_field(name="/ask [question]", value="Chat with Grok (remembers conversation)", inline=False)
+    embed.add_field(name="/ask [question]", value="Chat with Grok (remembers your conversation)", inline=False)
     embed.add_field(name="/imagine [prompt]", value="Generate images (NSFW allowed)", inline=False)
     embed.add_field(name="/ping", value="Check bot latency", inline=True)
     embed.add_field(name="/uptime", value="How long the bot has been running", inline=True)
