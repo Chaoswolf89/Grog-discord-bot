@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 from discord import app_commands, Embed, ui
-from import discord
+import discord
 import os
 import time
 import asyncio
