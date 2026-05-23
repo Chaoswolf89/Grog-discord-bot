@@ -22,7 +22,7 @@ print(f"   XAI key starts with: {XAI_API_KEY[:6]}")
 
 xai_client = Client(api_key=XAI_API_KEY)
 
-# ==================== MEMORY ====================
+# ==================== MEMORY & COOLDOWNS ====================
 MEMORY_FILE = "conversation_memory.json"
 conversation_memory = {}
 user_cooldowns = {}
@@ -47,12 +47,14 @@ load_memory()
 def is_owner(interaction: discord.Interaction):
     return interaction.user.id == BOT_OWNER_ID
 
-# ==================== BOT ====================
+# ==================== BOT SETUP ====================
 intents = discord.Intents.default()
 intents.message_content = True
+
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
+# ==================== EVENTS ====================
 @client.event
 async def on_ready():
     await tree.sync()
@@ -72,6 +74,7 @@ async def on_message(message):
 async def ask(interaction: discord.Interaction, question: str):
     user_id = str(interaction.user.id)
     now = time.time()
+
     if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS:
         await interaction.response.send_message("⏳ Slow down a bit.", ephemeral=True)
         return
@@ -84,11 +87,13 @@ async def ask(interaction: discord.Interaction, question: str):
     try:
         chat = xai_client.chat.create(model="grok-4")   # ← FIXED
         chat.append(system("You are Grok, helpful, witty, and a little chaotic. Remember previous messages."))
+
         for msg in conversation_memory[user_id][-MAX_HISTORY:]:
             if msg["role"] == "user":
                 chat.append(user(msg["content"]))
             else:
                 chat.append(assistant(msg["content"]))
+
         chat.append(user(question))
         response = await chat.sample()
         reply_text = response.text
@@ -96,6 +101,7 @@ async def ask(interaction: discord.Interaction, question: str):
         conversation_memory[user_id].append({"role": "user", "content": question})
         conversation_memory[user_id].append({"role": "assistant", "content": reply_text})
         save_memory()
+
         await interaction.followup.send(reply_text)
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
@@ -105,6 +111,7 @@ async def ask(interaction: discord.Interaction, question: str):
 async def imagine(interaction: discord.Interaction, prompt: str):
     user_id = str(interaction.user.id)
     now = time.time()
+
     if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS:
         await interaction.response.send_message("⏳ Slow down.", ephemeral=True)
         return
@@ -113,7 +120,12 @@ async def imagine(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     try:
         await interaction.followup.send("🎨 Generating...")
-        response = xai_client.image.sample(prompt=prompt, model="grok-imagine-image-quality")   # ← FIXED
+
+        response = xai_client.image.sample(
+            prompt=prompt,
+            model="grok-imagine-image-quality"   # ← FIXED
+        )
+
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=response.images[0].url)
         await interaction.followup.send(embed=embed)
@@ -148,7 +160,11 @@ async def uptime(interaction: discord.Interaction):
 async def stats(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     mem_count = len(conversation_memory.get(user_id, []))
-    await interaction.response.send_message(f"**Your stats:**\n• Messages in memory: {mem_count}\n• Cooldown active: {'Yes' if user_id in user_cooldowns else 'No'}")
+    await interaction.response.send_message(
+        f"**Your stats:**\n"
+        f"• Messages in memory: {mem_count}\n"
+        f"• Cooldown active: {'Yes' if user_id in user_cooldowns else 'No'}"
+    )
 
 @tree.command(name="memory", description="Clear your conversation memory")
 async def memory_clear(interaction: discord.Interaction):
