@@ -3,7 +3,10 @@ import os
 import time
 import asyncio
 import random
-from discord import app_commands
+import json
+import logging
+from datetime import datetime
+from discord import app_commands, Embed, ui
 from xai_sdk import Client
 from xai_sdk.chat import system, user, assistant
 
@@ -12,11 +15,17 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", 0))
 
+# Advanced Settings
 conversation_memory = {}
 user_cooldowns = {}
-MAX_HISTORY = 12
-COOLDOWN_SECONDS = 5
+MAX_HISTORY = 15
+COOLDOWN_SECONDS = 4
 START_TIME = time.time()
+MEMORY_FILE = "conversation_memory.json"
+
+# Logging Setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 if not DISCORD_TOKEN or not XAI_API_KEY:
     print("❌ Missing DISCORD_TOKEN or XAI_API_KEY!")
@@ -41,13 +50,36 @@ def get_uptime():
     uptime = time.time() - START_TIME
     hours = int(uptime // 3600)
     minutes = int((uptime % 3600) // 60)
-    return f"{hours}h {minutes}m"
+    seconds = int(uptime % 60)
+    return f"{hours}h {minutes}m {seconds}s"
+
+
+def load_memory():
+    global conversation_memory
+    try:
+        with open(MEMORY_FILE, "r") as f:
+            data = json.load(f)
+            conversation_memory = {k: [eval(msg) for msg in v] for k, v in data.items()}
+        logger.info(f"Loaded memory for {len(conversation_memory)} channels")
+    except:
+        conversation_memory = {}
+
+
+def save_memory():
+    try:
+        data = {k: [str(msg) for msg in v] for k, v in conversation_memory.items()}
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Failed to save memory: {e}")
 
 
 @client.event
 async def on_ready():
     await tree.sync()
+    load_memory()
     print(f"✅ {client.user} is online on {len(client.guilds)} servers!")
+    logger.info("Bot is fully ready!")
 
 
 # ===================== ASK WITH MEMORY =====================
@@ -59,7 +91,7 @@ async def ask(interaction: discord.Interaction, question: str):
     user_id = interaction.user.id
     now = time.time()
     if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS:
-        return await interaction.followup.send("⏳ Slow down! Wait a moment.")
+        return await interaction.followup.send("⏳ Slow down!")
 
     user_cooldowns[user_id] = now
 
@@ -83,6 +115,7 @@ async def ask(interaction: discord.Interaction, question: str):
         conversation_memory[channel_id].append(assistant(reply))
 
         await interaction.followup.send(reply)
+        save_memory()
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)[:250]}")
 
@@ -93,7 +126,7 @@ async def ask(interaction: discord.Interaction, question: str):
 async def imagine(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     try:
-        await interaction.followup.send("🎨 Generating image...")
+        await interaction.followup.send("🎨 Generating...")
         response = xai_client.image.sample(prompt=prompt)
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=response.images[0].url)
@@ -102,13 +135,14 @@ async def imagine(interaction: discord.Interaction, prompt: str):
         await interaction.followup.send(f"❌ Error: {str(e)[:250]}")
 
 
-# ===================== UTILITY =====================
+# ===================== UTILITY COMMANDS =====================
 @tree.command(name="clear", description="Clear memory in this channel")
 async def clear(interaction: discord.Interaction):
     channel_id = str(interaction.channel_id)
     if channel_id in conversation_memory:
         del conversation_memory[channel_id]
-        await interaction.response.send_message("🧹 Memory cleared for this channel.")
+        save_memory()
+        await interaction.response.send_message("🧹 Memory cleared!")
     else:
         await interaction.response.send_message("No memory to clear.")
 
@@ -124,16 +158,27 @@ async def uptime(interaction: discord.Interaction):
     await interaction.response.send_message(f"⏱️ Uptime: **{get_uptime()}**")
 
 
+@tree.command(name="stats", description="Show detailed bot stats")
+async def stats(interaction: discord.Interaction):
+    embed = discord.Embed(title="Grok Bot Statistics", color=0x1DA1F2, timestamp=datetime.utcnow())
+    embed.add_field(name="Servers", value=len(client.guilds), inline=True)
+    embed.add_field(name="Latency", value=f"{round(client.latency*1000)}ms", inline=True)
+    embed.add_field(name="Uptime", value=get_uptime(), inline=True)
+    embed.add_field(name="Active Memory Channels", value=len(conversation_memory), inline=True)
+    embed.add_field(name="Memory File", value="Loaded" if os.path.exists(MEMORY_FILE) else "Not Found", inline=True)
+    await interaction.response.send_message(embed=embed)
+
+
 @tree.command(name="help", description="Show all commands")
 async def help_command(interaction: discord.Interaction):
-    embed = discord.Embed(title="Grok Bot - Ultimate", color=0x1DA1F2)
-    embed.add_field(name="Main", value="/ask [question]\n/imagine [prompt]", inline=False)
-    embed.add_field(name="Utility", value="/clear\n/ping\n/uptime\n/help", inline=False)
+    embed = discord.Embed(title="Grok Bot - Ultimate Version", color=0x1DA1F2)
+    embed.add_field(name="Chat & Images", value="/ask [question]\n/imagine [prompt]", inline=False)
+    embed.add_field(name="Utility", value="/clear\n/ping\n/uptime\n/stats\n/help", inline=False)
     embed.add_field(name="Owner", value="/servers", inline=False)
     await interaction.response.send_message(embed=embed)
 
 
-# ===================== OWNER =====================
+# ===================== OWNER COMMANDS =====================
 @tree.command(name="servers", description="Show server count (Owner only)")
 async def servers(interaction: discord.Interaction):
     if not is_owner(interaction):
@@ -141,13 +186,13 @@ async def servers(interaction: discord.Interaction):
     await interaction.response.send_message(f"🤖 Bot is in **{len(client.guilds)}** servers.")
 
 
-# ===================== AUTO RESPONSE =====================
+# ===================== MENTION RESPONSE =====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
     if client.user in message.mentions:
-        responses = ["Yes?", "I'm here!", "What can I help with?", "Hey there!"]
+        responses = ["Hey! 👋", "Yes?", "I'm here!", "What can I help with?", "Sup?", "Ready!"]
         await message.channel.send(random.choice(responses))
 
 
