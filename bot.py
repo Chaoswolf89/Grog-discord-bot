@@ -17,17 +17,15 @@ if not DISCORD_TOKEN or not XAI_API_KEY:
     exit(1)
 
 print("✅ Tokens loaded successfully!")
-print(f"   Discord token starts with: {DISCORD_TOKEN[:4]}... ends with: ...{DISCORD_TOKEN[-4:]}")
-print(f"   XAI key starts with: {XAI_API_KEY[:6]}")
 
 xai_client = Client(api_key=XAI_API_KEY)
 
-# ==================== MEMORY & COOLDOWNS ====================
+# ==================== MEMORY ====================
 MEMORY_FILE = "conversation_memory.json"
 conversation_memory = {}
 user_cooldowns = {}
 MAX_HISTORY = 12
-COOLDOWN_SECONDS = 3          # lowered for easier testing
+COOLDOWN_SECONDS = 3
 START_TIME = time.time()
 
 def load_memory():
@@ -54,7 +52,6 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# ==================== EVENTS ====================
 @client.event
 async def on_ready():
     await tree.sync()
@@ -81,14 +78,23 @@ async def ask(interaction: discord.Interaction, question: str):
         return
     user_cooldowns[user_id] = now
 
-    await interaction.response.defer()
+    # More defensive defer
+    try:
+        await interaction.response.defer()
+    except:
+        # If defer fails, try to send a quick ephemeral message instead
+        try:
+            await interaction.response.send_message("Thinking...", ephemeral=True)
+        except:
+            pass
+        return
 
     if user_id not in conversation_memory:
         conversation_memory[user_id] = []
 
     try:
         chat = xai_client.chat.create(model="grok-4.3")
-        chat.append(system("You are Grok, helpful, witty, and a little chaotic. Remember conversation history."))
+        chat.append(system("You are Grok, helpful, witty, and a little chaotic."))
 
         for msg in conversation_memory[user_id][-MAX_HISTORY:]:
             if msg["role"] == "user":
@@ -97,8 +103,6 @@ async def ask(interaction: discord.Interaction, question: str):
                 chat.append(assistant(msg["content"]))
 
         chat.append(user(question))
-
-        # FIX: No await here
         response = chat.sample()
         reply_text = getattr(response, "content", None) or getattr(response, "text", str(response))
 
@@ -109,10 +113,13 @@ async def ask(interaction: discord.Interaction, question: str):
         await interaction.followup.send(reply_text)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)[:250]}")
+        try:
+            await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
+        except:
+            pass
 
-@tree.command(name="imagine", description="Generate images with Grok (NSFW allowed)")
-@app_commands.describe(prompt="Describe what you want to see")
+@tree.command(name="imagine", description="Generate images (NSFW allowed)")
+@app_commands.describe(prompt="Describe the image")
 async def imagine(interaction: discord.Interaction, prompt: str):
     user_id = str(interaction.user.id)
     now = time.time()
@@ -122,32 +129,35 @@ async def imagine(interaction: discord.Interaction, prompt: str):
         return
     user_cooldowns[user_id] = now
 
-    await interaction.response.defer()
+    try:
+        await interaction.response.defer()
+    except:
+        try:
+            await interaction.response.send_message("Generating...", ephemeral=True)
+        except:
+            pass
+        return
+
     try:
         await interaction.followup.send("🎨 Generating...")
+        img_response = xai_client.image.sample(prompt=prompt, model="grok-imagine-image-quality")
 
-        img_response = xai_client.image.sample(
-            prompt=prompt,
-            model="grok-imagine-image-quality"
-        )
-
-        # FIX: Multiple fallback options for image URL
         image_url = None
         if hasattr(img_response, "images") and img_response.images:
             image_url = img_response.images[0].url
         elif hasattr(img_response, "url"):
             image_url = img_response.url
-        elif hasattr(img_response, "image_url"):
-            image_url = img_response.image_url
         else:
             image_url = str(img_response)
 
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=image_url)
         await interaction.followup.send(embed=embed)
-
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)[:250]}")
+        try:
+            await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
+        except:
+            pass
 
 @tree.command(name="help", description="Show all commands")
 async def help_command(interaction: discord.Interaction):
@@ -160,7 +170,7 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(name="/memory", value="Clear your memory", inline=True)
     if is_owner(interaction):
         embed.add_field(name="/servers", value="List servers (Owner only)", inline=False)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @tree.command(name="ping", description="Check bot latency")
 async def ping(interaction: discord.Interaction):
