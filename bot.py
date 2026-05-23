@@ -93,6 +93,7 @@ async def ask(interaction: discord.Interaction, question: str):
         conversation_memory[user_id] = []
 
     try:
+        # FIXED: Explicit model
         chat = xai_client.chat.create(model="grok-4")
         chat.append(system("You are Grok, helpful, witty, and a little chaotic. Remember previous messages in this chat."))
 
@@ -111,6 +112,7 @@ async def ask(interaction: discord.Interaction, question: str):
         save_memory()
 
         await interaction.followup.send(reply_text)
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
 
@@ -128,7 +130,13 @@ async def imagine(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     try:
         await interaction.followup.send("🎨 Generating...")
-        response = xai_client.image.sample(prompt=prompt)
+
+        # FIXED: Explicit model parameter
+        response = xai_client.image.sample(
+            prompt=prompt,
+            model="grok-imagine-image-quality"
+        )
+
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=response.images[0].url)
         await interaction.followup.send(embed=embed)
