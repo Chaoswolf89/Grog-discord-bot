@@ -23,7 +23,7 @@ COOLDOWN_SECONDS = 4
 START_TIME = time.time()
 MEMORY_FILE = "conversation_memory.json"
 
-# Logging Setup
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def load_memory():
         with open(MEMORY_FILE, "r") as f:
             data = json.load(f)
             conversation_memory = {k: [eval(msg) for msg in v] for k, v in data.items()}
-        logger.info(f"Loaded memory for {len(conversation_memory)} channels")
+        logger.info(f"✅ Loaded memory for {len(conversation_memory)} channels")
     except:
         conversation_memory = {}
 
@@ -79,7 +79,7 @@ async def on_ready():
     await tree.sync()
     load_memory()
     print(f"✅ {client.user} is online on {len(client.guilds)} servers!")
-    logger.info("Bot is fully ready!")
+    logger.info("Bot fully initialized and ready!")
 
 
 # ===================== ASK WITH MEMORY =====================
@@ -91,7 +91,7 @@ async def ask(interaction: discord.Interaction, question: str):
     user_id = interaction.user.id
     now = time.time()
     if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS:
-        return await interaction.followup.send("⏳ Slow down!")
+        return await interaction.followup.send("⏳ Slow down! Wait a few seconds.")
 
     user_cooldowns[user_id] = now
 
@@ -126,7 +126,7 @@ async def ask(interaction: discord.Interaction, question: str):
 async def imagine(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     try:
-        await interaction.followup.send("🎨 Generating...")
+        await interaction.followup.send("🎨 Generating image...")
         response = xai_client.image.sample(prompt=prompt)
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
         embed.set_image(url=response.images[0].url)
@@ -142,7 +142,7 @@ async def clear(interaction: discord.Interaction):
     if channel_id in conversation_memory:
         del conversation_memory[channel_id]
         save_memory()
-        await interaction.response.send_message("🧹 Memory cleared!")
+        await interaction.response.send_message("🧹 Memory cleared for this channel!")
     else:
         await interaction.response.send_message("No memory to clear.")
 
@@ -192,7 +192,7 @@ async def on_message(message):
     if message.author == client.user:
         return
     if client.user in message.mentions:
-        responses = ["Hey! 👋", "Yes?", "I'm here!", "What can I help with?", "Sup?", "Ready!"]
+        responses = ["Hey! 👋", "Yes?", "I'm here!", "What can I help with?", "Sup?", "Ready!", "Hello!"]
         await message.channel.send(random.choice(responses))
 
 
