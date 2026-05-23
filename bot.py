@@ -1,21 +1,23 @@
 # =============================================
-# GROK DISCORD BOT - CLEAN + EXPLICIT VERSION
+# GROK DISCORD BOT - FULLY COMMENTED VERSION
 # =============================================
 
-import discord
-import os
-import time
-import json
-import random
+import discord          # Discord library
+import os               # Used to read environment variables (tokens)
+import time             # Used for uptime and cooldowns
+import json             # Used to save/load conversation memory
+import random           # Used for random reply when mentioned
 from discord import app_commands
 from xai_sdk import Client
 from xai_sdk.chat import system, user, assistant
 
-# ==================== CONFIG ====================
+# ==================== CONFIG / TOKENS ====================
+# These lines read your secret keys from Railway
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", 0))
 
+# Safety check - stops the bot if tokens are missing
 if not DISCORD_TOKEN or not XAI_API_KEY:
     print("❌ Missing DISCORD_TOKEN or XAI_API_KEY!")
     exit(1)
@@ -24,15 +26,16 @@ print("✅ Tokens loaded successfully!")
 print(f"   Discord token starts with: {DISCORD_TOKEN[:4]}... ends with: ...{DISCORD_TOKEN[-4:]}")
 print(f"   XAI key starts with: {XAI_API_KEY[:6]}")
 
+# Create the xAI client
 xai_client = Client(api_key=XAI_API_KEY)
 
-# ==================== MEMORY ====================
+# ==================== MEMORY SYSTEM ====================
 MEMORY_FILE = "conversation_memory.json"
 conversation_memory = {}
 user_cooldowns = {}
-MAX_HISTORY = 12
-COOLDOWN_SECONDS = 6
-START_TIME = time.time()
+MAX_HISTORY = 12          # How many messages to remember per user
+COOLDOWN_SECONDS = 6      # Users must wait this many seconds between commands
+START_TIME = time.time()  # Used to calculate uptime
 
 def load_memory():
     global conversation_memory
@@ -48,7 +51,7 @@ def save_memory():
 
 load_memory()
 
-def is_owner(interaction: discord.Interaction):
+def is_owner(interaction):
     return interaction.user.id == BOT_OWNER_ID
 
 # ==================== BOT SETUP ====================
@@ -69,28 +72,37 @@ async def on_message(message):
     if message.author == client.user:
         return
     if client.user.mentioned_in(message):
-        replies = ["Yeah? What's up?", "You rang?", "I'm here. What's on your mind?", "Sup. Hit me with it.", "You got my attention 👀"]
+        replies = [
+            "Yeah? What's up?",
+            "You rang?",
+            "I'm here. What's on your mind?",
+            "Sup. Hit me with it.",
+            "You got my attention 👀"
+        ]
         await message.channel.send(random.choice(replies))
 
 # ==================== COMMANDS ====================
 
-@tree.command(name="ask", description="Chat with Grok (with memory)")
+# /ask command - Chat with memory
+@tree.command(name="ask", description="Chat with Grok (remembers conversation)")
 @app_commands.describe(question="What do you want to ask?")
 async def ask(interaction: discord.Interaction, question: str):
     user_id = str(interaction.user.id)
     now = time.time()
 
+    # Cooldown check
     if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS:
         await interaction.response.send_message("⏳ Slow down a bit.", ephemeral=True)
         return
     user_cooldowns[user_id] = now
 
     await interaction.response.defer()
+
     if user_id not in conversation_memory:
         conversation_memory[user_id] = []
 
     try:
-        chat = xai_client.chat.create(model="grok-4")   # ← FIXED
+        chat = xai_client.chat.create(model="grok-4")   # Explicit model
         chat.append(system("You are Grok, helpful, witty, and a little chaotic. Remember previous messages."))
 
         for msg in conversation_memory[user_id][-MAX_HISTORY:]:
@@ -111,6 +123,7 @@ async def ask(interaction: discord.Interaction, question: str):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
 
+# /imagine command - Image generation
 @tree.command(name="imagine", description="Generate images with Grok (NSFW allowed)")
 @app_commands.describe(prompt="Describe what you want to see")
 async def imagine(interaction: discord.Interaction, prompt: str):
@@ -128,7 +141,7 @@ async def imagine(interaction: discord.Interaction, prompt: str):
 
         response = xai_client.image.sample(
             prompt=prompt,
-            model="grok-imagine-image-quality"   # ← FIXED
+            model="grok-imagine-image-quality"   # Explicit model - this was the fix
         )
 
         embed = discord.Embed(title="Grok Imagine", description=prompt[:200], color=0xFF00FF)
@@ -137,17 +150,18 @@ async def imagine(interaction: discord.Interaction, prompt: str):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)[:200]}")
 
+# /help command - Shows all commands clearly
 @tree.command(name="help", description="Show all commands")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(title="Grok Bot Commands", color=0x00FFAA)
-    embed.add_field(name="/ask [question]", value="Chat with Grok (remembers your conversation)", inline=False)
+    embed.add_field(name="/ask [question]", value="Chat with Grok (it remembers your conversation)", inline=False)
     embed.add_field(name="/imagine [prompt]", value="Generate images (NSFW allowed)", inline=False)
-    embed.add_field(name="/ping", value="Check bot latency", inline=True)
+    embed.add_field(name="/ping", value="Check how fast the bot responds", inline=True)
     embed.add_field(name="/uptime", value="How long the bot has been running", inline=True)
-    embed.add_field(name="/stats", value="Show your memory & cooldown status", inline=True)
+    embed.add_field(name="/stats", value="Show your personal memory & cooldown status", inline=True)
     embed.add_field(name="/memory", value="Clear your conversation memory", inline=True)
     if is_owner(interaction):
-        embed.add_field(name="/servers", value="List all servers (Owner only)", inline=False)
+        embed.add_field(name="/servers", value="List all servers the bot is in (Owner only)", inline=False)
     await interaction.response.send_message(embed=embed)
 
 @tree.command(name="ping", description="Check bot latency")
@@ -167,7 +181,7 @@ async def stats(interaction: discord.Interaction):
     mem_count = len(conversation_memory.get(user_id, []))
     await interaction.response.send_message(
         f"**Your stats:**\n"
-        f"• Messages in memory: {mem_count}\n"
+        f"• Messages remembered: {mem_count}\n"
         f"• Cooldown active: {'Yes' if user_id in user_cooldowns else 'No'}"
     )
 
@@ -184,9 +198,10 @@ async def memory_clear(interaction: discord.Interaction):
 @tree.command(name="servers", description="List all servers (Owner only)")
 async def servers(interaction: discord.Interaction):
     if not is_owner(interaction):
-        await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+        await interaction.response.send_message("❌ This command is for the bot owner only.", ephemeral=True)
         return
     guilds = [f"• {g.name} ({g.member_count} members)" for g in client.guilds]
     await interaction.response.send_message("**Servers I'm in:**\n" + "\n".join(guilds))
 
+# ==================== START THE BOT ====================
 client.run(DISCORD_TOKEN)
